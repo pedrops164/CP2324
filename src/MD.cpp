@@ -458,29 +458,29 @@ double Kinetic() { //Write Function here!
 
 // Function to calculate the potential energy of the system
 double Potential() {
-    double quot, r2, rnorm, term1, term2, Pot;
-    int i, j, k;
-    
-    Pot=0.;
-    for (i=0; i<N; i++) {
-        for (j=0; j<N; j++) {
-            
-            if (j!=i) {
-                r2=0.;
-                for (k=0; k<3; k++) {
-                    r2 += (r[i][k]-r[j][k])*(r[i][k]-r[j][k]);
-                }
-                rnorm=sqrt(r2);
-                quot=sigma/rnorm;
-                term1 = pow(quot,12.);
-                term2 = pow(quot,6.);
-                
-                Pot += 4*epsilon*(term1 - term2);
-                
+    /*
+    The potential energy between two particles i and j is symmetric, meaning U(i,j) = U(j,i).
+    So, we can eliminate almost half of the calculations by only computing the potential energy for unique pairs of particles, without repeating.
+    */
+    double Pot = 0.;
+
+    for (int i = 0; i < N-1; i++) {
+        for (int j = i+1; j < N; j++) {
+            double r2 = 0.;
+            for (int k = 0; k < 3; k++) {
+                double diff = r[i][k] - r[j][k]; //we don't need to access the memory twice for each of them
+                r2 += diff * diff;
             }
+            //we can declare the following variables inside this scope
+            double rnorm = sqrt(r2);
+            double quot = sigma / rnorm;
+            double quot6 = quot * quot * quot * quot * quot * quot; // manually calculate pow(quot,6.);
+            double quot12 = quot6 * quot6; // manually calculate pow(quot,12.);
+
+            Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
         }
     }
-    
+
     return Pot;
 }
 
