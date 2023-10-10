@@ -466,11 +466,18 @@ double Potential() {
 
     for (int i = 0; i < N-1; i++) {
         for (int j = i+1; j < N; j++) {
-            double r2 = 0.;
-            for (int k = 0; k < 3; k++) {
-                double diff = r[i][k] - r[j][k]; //we don't need to access the memory twice for each of them
-                r2 += diff * diff;
-            }
+            //for (int k = 0; k < 3; k++) {
+            //    double diff = r[i][k] - r[j][k]; //we don't need to access the memory twice for each of them
+            //    r2 += diff * diff;
+            //}
+
+            // we unroll the loop: computes the difference for each of the coordinates between the two particles
+            double diff1 = r[i][0] - r[j][0];
+            double diff2 = r[i][1] - r[j][1];
+            double diff3 = r[i][2] - r[j][2];
+
+            double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diffs
+
             //we can declare the following variables inside this scope
             double rnorm = sqrt(r2);
             double quot = sigma / rnorm;
