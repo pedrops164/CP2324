@@ -28,9 +28,9 @@
 #include<math.h>
 #include<string.h>
 
-
 // Number of particles
-int N;
+//int N;
+# define N 2160
 
 //  Lennard-Jones parameters in natural units!
 double sigma = 1.;
@@ -50,13 +50,13 @@ double Tinit;  //2;
 //
 const int MAXPART=5001;
 //  Position
-double r[MAXPART][3];
+double r[N][3];
 //  Velocity
-double v[MAXPART][3];
+double v[N][3];
 //  Acceleration
-double a[MAXPART][3];
+double a[N][3];
 //  Force
-double F[MAXPART][3];
+double F[N][3];
 
 // atom type
 char atype[10];
@@ -211,7 +211,7 @@ int main()
     
     scanf("%lf",&rho);
     
-    N = 10*216;
+    //N = 10*216;
     Vol = N/(rho*NA);
     
     Vol /= VolFac;
@@ -464,29 +464,63 @@ double Potential() {
     */
     double Pot = 0.;
 
-    for (int i = 0; i < N-1; i++) {
-        for (int j = i+1; j < N; j++) {
-            //for (int k = 0; k < 3; k++) {
-            //    double diff = r[i][k] - r[j][k]; //we don't need to access the memory twice for each of them
-            //    r2 += diff * diff;
-            //}
+    // size of each block to be processed once at a time
+    int blocksize = 256;
+    // total number of blocks that have size 128 (the last one if smaller than 128 isn't included)
+    int number_of_blocks = N/blocksize;
 
-            // we unroll the loop: computes the difference for each of the coordinates between the two particles
-            double diff1 = r[i][0] - r[j][0];
-            double diff2 = r[i][1] - r[j][1];
-            double diff3 = r[i][2] - r[j][2];
+    for (int i=0; i < number_of_blocks-1; i++) {
+        for(int j = i+1; j < number_of_blocks; j++) {
+            int start_i = i*blocksize;
+            int end_i = (i+1)*blocksize;
+            
+            int start_j = j*blocksize;
+            int end_j = (j+1)*blocksize;
 
-            double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diffs
+            for (int k=start_i; k<end_i; k++) {
+                for (int p=start_j; p<end_j; p++) {
+                    // we unroll the loop: computes the difference for each of the coordinates between the two particles
+                    double diff1 = r[k][0] - r[p][0];
+                    double diff2 = r[k][1] - r[p][1];
+                    double diff3 = r[k][2] - r[p][2];
 
-            //we can declare the following variables inside this scope
-            double rnorm = sqrt(r2);
-            double quot = sigma / rnorm;
-            double quot6 = quot * quot * quot * quot * quot * quot; // manually calculate pow(quot,6.);
-            double quot12 = quot6 * quot6; // manually calculate pow(quot,12.);
+                    double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diffs
 
-            Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
+                    //we can declare the following variables inside this scope
+                    double rnorm = sqrt(r2);
+                    double quot = sigma / rnorm;
+                    double quot6 = quot * quot * quot * quot * quot * quot; // manually calculate pow(quot,6.);
+                    double quot12 = quot6 * quot6; // manually calculate pow(quot,12.);
+
+                    Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
+                }
+            }
         }
     }
+
+    //for (int i = 0; i < N-1; i++) {
+    //    for (int j = i+1; j < N; j++) {
+    //        //for (int k = 0; k < 3; k++) {
+    //        //    double diff = r[i][k] - r[j][k]; //we don't need to access the memory twice for each of them
+    //        //    r2 += diff * diff;
+    //        //}
+//
+    //        // we unroll the loop: computes the difference for each of the coordinates between the two particles
+    //        double diff1 = r[i][0] - r[j][0];
+    //        double diff2 = r[i][1] - r[j][1];
+    //        double diff3 = r[i][2] - r[j][2];
+//
+    //        double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diffs
+//
+    //        //we can declare the following variables inside this scope
+    //        double rnorm = sqrt(r2);
+    //        double quot = sigma / rnorm;
+    //        double quot6 = quot * quot * quot * quot * quot * quot; // manually calculate pow(quot,6.);
+    //        double quot12 = quot6 * quot6; // manually calculate pow(quot,12.);
+//
+    //        Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
+    //    }
+    //}
 
     return Pot;
 }
