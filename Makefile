@@ -1,6 +1,6 @@
-CC = gcc
+CC = g++
 SRC = src/
-CFLAGS = -pg # none
+CFLAGS = -pg -O2 -ftree-vectorize -fprefetch-loop-arrays -march=native # -funroll-all-loops# -ftree-vectorizer-verbose=6
 
 .DEFAULT_GOAL = MD.exe
 

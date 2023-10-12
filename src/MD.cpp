@@ -26,6 +26,7 @@
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
+#include<cmath>
 #include<string.h>
 
 // Number of particles
@@ -80,6 +81,8 @@ double Potential();
 double MeanSquaredVelocity();
 //  Compute total kinetic energy from particle mass and velocities
 double Kinetic();
+// efficient recursive function that implements exponentiation by squaring
+double pow_by_squaring(double x, int n);
 
 int main()
 {
@@ -489,38 +492,20 @@ double Potential() {
                     //we can declare the following variables inside this scope
                     double rnorm = sqrt(r2);
                     double quot = sigma / rnorm;
-                    double quot6 = quot * quot * quot * quot * quot * quot; // manually calculate pow(quot,6.);
-                    double quot12 = quot6 * quot6; // manually calculate pow(quot,12.);
+                    
+                    // previous implementation
+                    //double quot12 = pow(quot,12.);
+                    //double quot6 = pow(quot,6.);
+
+                    // optimized implementation
+                    double quot6 = std::pow(quot, 6);
+                    double quot12 = quot6*quot6; // manually calculate pow(quot,12.);
 
                     Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
                 }
             }
         }
     }
-
-    //for (int i = 0; i < N-1; i++) {
-    //    for (int j = i+1; j < N; j++) {
-    //        //for (int k = 0; k < 3; k++) {
-    //        //    double diff = r[i][k] - r[j][k]; //we don't need to access the memory twice for each of them
-    //        //    r2 += diff * diff;
-    //        //}
-//
-    //        // we unroll the loop: computes the difference for each of the coordinates between the two particles
-    //        double diff1 = r[i][0] - r[j][0];
-    //        double diff2 = r[i][1] - r[j][1];
-    //        double diff3 = r[i][2] - r[j][2];
-//
-    //        double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diffs
-//
-    //        //we can declare the following variables inside this scope
-    //        double rnorm = sqrt(r2);
-    //        double quot = sigma / rnorm;
-    //        double quot6 = quot * quot * quot * quot * quot * quot; // manually calculate pow(quot,6.);
-    //        double quot12 = quot6 * quot6; // manually calculate pow(quot,12.);
-//
-    //        Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
-    //    }
-    //}
 
     return Pot;
 }
@@ -532,9 +517,6 @@ double Potential() {
 //   accelleration of each atom. 
 void computeAccelerations() {
     int i, j, k;
-    double f, rSqd;
-    double rij[3]; // position of i relative to j
-    
     
     for (i = 0; i < N; i++) {  // set all accelerations to zero
         for (k = 0; k < 3; k++) {
@@ -544,7 +526,8 @@ void computeAccelerations() {
     for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
         for (j = i+1; j < N; j++) {
             // initialize r^2 to zero
-            rSqd = 0;
+            double rSqd = 0;
+            double rij[3]; // position of i relative to j
             
             for (k = 0; k < 3; k++) {
                 //  component-by-componenent position of i relative to j
@@ -554,7 +537,11 @@ void computeAccelerations() {
             }
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
-            f = 24 * (2 * pow(rSqd, -7) - pow(rSqd, -4));
+
+            // doing the pow with std::pow from <math.h> saves a lot of timme!!!
+            //double f = 24 * (2 * pow_by_squaring(rSqd, -7) - pow_by_squaring(rSqd, -4));
+            double f = 24 * (2 * std::pow(rSqd, -7) - std::pow(rSqd, -4));
+
             for (k = 0; k < 3; k++) {
                 //  from F = ma, where m = 1 in natural units!
                 a[i][k] += rij[k] * f;
@@ -707,5 +694,26 @@ double gaussdist() {
         available = false;
         return gset;
         
+    }
+}
+
+// efficient recursive function that implements exponentiation by squaring
+/*
+x^n is
+if even: x(^(n/2))^2
+if odd: x * x^(n-1)
+
+does in log(N)
+*/
+double pow_by_squaring(double x, int n) {
+    if (n == 0) {
+        return 1.0;
+    } else if (n < 0) {
+        return 1.0 / (x * pow_by_squaring(x, -n - 1));
+    } else if (n % 2 == 0) {  // n is even
+        double y = pow_by_squaring(x, n/2);
+        return y * y;
+    } else {  // n is odd
+        return x * pow_by_squaring(x, n-1);
     }
 }
