@@ -28,6 +28,7 @@
 #include<math.h>
 #include<cmath>
 #include<string.h>
+#include <smmintrin.h>  // Required for SSE4.1
 
 // Number of particles
 //int N;
@@ -52,13 +53,25 @@ double Tinit;  //2;
 //
 const int MAXPART=5001;
 //  Position
-double r[N][3];
+//double r[N][3];
+double r_x[N];
+double r_y[N];
+double r_z[N];
 //  Velocity
-double v[N][3];
+//double v[N][3];
+double v_x[N];
+double v_y[N];
+double v_z[N];
 //  Acceleration
-double a[N][3];
+//double a[N][3];
+double a_x[N];
+double a_y[N];
+double a_z[N];
 //  Force
-double F[N][3];
+//double F[N][3];
+double F_x[N];
+double F_y[N];
+double F_z[N];
 
 // atom type
 char atype[10];
@@ -93,7 +106,7 @@ int main()
     double dt, Vol, Temp, Press, Pavg, Tavg, rho;
     double VolFac, TempFac, PressFac, timefac;
     double KE, PE, mvs, gc, Z;
-    char trash[10000], prefix[1000], tfn[1000], ofn[1000], afn[1000];
+    char prefix[1000], tfn[1000], ofn[1000], afn[1000];
     FILE *infp, *tfp, *ofp, *afp;
     
     
@@ -384,9 +397,9 @@ void initialize() {
             for (k=0; k<n; k++) {
                 if (p<N) {
                     
-                    r[p][0] = (i + 0.5)*pos;
-                    r[p][1] = (j + 0.5)*pos;
-                    r[p][2] = (k + 0.5)*pos;
+                    r_x[p] = (i + 0.5)*pos;
+                    r_y[p] = (j + 0.5)*pos;
+                    r_z[p] = (k + 0.5)*pos;
                 }
                 p++;
             }
@@ -424,9 +437,9 @@ double MeanSquaredVelocity() {
     
     for (int i=0; i<N; i++) {
         
-        vx2 = vx2 + v[i][0]*v[i][0];
-        vy2 = vy2 + v[i][1]*v[i][1];
-        vz2 = vz2 + v[i][2]*v[i][2];
+        vx2 = vx2 + v_x[i]*v_x[i];
+        vy2 = vy2 + v_y[i]*v_y[i];
+        vz2 = vz2 + v_z[i]*v_z[i];
         
     }
     v2 = (vx2+vy2+vz2)/N;
@@ -445,11 +458,9 @@ double Kinetic() { //Write Function here!
     for (int i=0; i<N; i++) {
         
         v2 = 0.;
-        for (int j=0; j<3; j++) {
-            
-            v2 += v[i][j]*v[i][j];
-            
-        }
+        v2 += v_x[i] * v_x[i];
+        v2 += v_y[i] * v_y[i];
+        v2 += v_z[i] * v_z[i];
         kin += m*v2/2.;
         
     }
@@ -472,9 +483,9 @@ double Potential() {
         for(int j = i+1; j < N; j++) {
 
             // we unroll the loop: computes the difference for each of the coordinates between the two particles
-            double diff1 = r[i][0] - r[j][0];
-            double diff2 = r[i][1] - r[j][1];
-            double diff3 = r[i][2] - r[j][2];
+            double diff1 = r_x[i] - r_x[j];
+            double diff2 = r_y[i] - r_y[j];
+            double diff3 = r_z[i] - r_z[j];
             double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diff
             //we can declare the following variables inside this scope
             double rnorm = sqrt(r2);
@@ -489,6 +500,7 @@ double Potential() {
             Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
         }
     }
+
     return Pot;
 }
 
@@ -501,10 +513,9 @@ double Potential() {
 //    double quot = sigma / rnorm;
 //    double quot6 = std::pow(quot, 6);
 //    double quot12 = quot6 * quot6;
-//    return 8 * epsilon * (quot12 - quot6);
+//    return epsilon8 * (quot12 - quot6);
 //}
 //
-//// Function to calculate the potential energy of the system
 //double Potential() {
 //    double Pot = 0.;
 //
@@ -539,9 +550,9 @@ void computeAccelerations() {
     int i, j, k;
 
     for (i = 0; i < N; i++) {  // set all accelerations to zero
-        for (k = 0; k < 3; k++) {
-            a[i][k] = 0;
-        }
+        a_x[i] = 0;
+        a_y[i] = 0;
+        a_z[i] = 0;
     }
     for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
         double ai0 = 0;
@@ -550,9 +561,9 @@ void computeAccelerations() {
         for (j = i+1; j < N; j++) {
             
             //  component-by-component position of i relative to j
-            double rij_0 = r[i][0] - r[j][0];
-            double rij_1 = r[i][1] - r[j][1];
-            double rij_2 = r[i][2] - r[j][2];
+            double rij_0 = r_x[i] - r_x[j];
+            double rij_1 = r_y[i] - r_y[j];
+            double rij_2 = r_z[i] - r_z[j];
             double rSqd = rij_0*rij_0 + rij_1*rij_1 + rij_2*rij_2;
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
@@ -565,13 +576,13 @@ void computeAccelerations() {
             ai1 += rij_1 * f;
             ai2 += rij_2 * f;
 
-            a[j][0] -= rij_0 * f;
-            a[j][1] -= rij_1 * f;
-            a[j][2] -= rij_2 * f;
+            a_x[j] -= rij_0 * f;
+            a_y[j] -= rij_1 * f;
+            a_z[j] -= rij_2 * f;
         }
-        a[i][0] += ai0;
-        a[i][1] += ai1;
-        a[i][2] += ai2;
+        a_x[i] += ai0;
+        a_y[i] += ai1;
+        a_z[i] += ai2;
     }
 }
 
@@ -587,46 +598,44 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
     //  Update positions and velocity with current velocity and acceleration
     //printf("  Updated Positions!\n");
     for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            r[i][j] += v[i][j]*dt + 0.5*a[i][j]*dt*dt;
-            
-            v[i][j] += 0.5*a[i][j]*dt;
-        }
+        r_x[i] += v_x[i]*dt + 0.5*a_x[i]*dt*dt;
+        v_x[i] += 0.5*a_x[i]*dt;
+        
+        r_y[i] += v_y[i]*dt + 0.5*a_y[i]*dt*dt;
+        v_y[i] += 0.5*a_y[i]*dt;
+        
+        r_z[i] += v_z[i]*dt + 0.5*a_z[i]*dt*dt;
+        v_z[i] += 0.5*a_z[i]*dt;
+
+
         //printf("  %i  %6.4e   %6.4e   %6.4e\n",i,r[i][0],r[i][1],r[i][2]);
     }
     //  Update accellerations from updated positions
     computeAccelerations();
     //  Update velocity with updated acceleration
     for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            v[i][j] += 0.5*a[i][j]*dt;
-        }
+        v_x[i] += 0.5*a_x[i]*dt;
+        v_y[i] += 0.5*a_y[i]*dt;
+        v_z[i] += 0.5*a_z[i]*dt;
     }
     
     // Elastic walls
     for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            if (r[i][j]<0.) {
-                v[i][j] *=-1.; //- elastic walls
-                psum += 2*m*fabs(v[i][j])/dt;  // contribution to pressure from "left" walls
-            }
-            if (r[i][j]>=L) {
-                v[i][j]*=-1.;  //- elastic walls
-                psum += 2*m*fabs(v[i][j])/dt;  // contribution to pressure from "right" walls
-            }
+        if (r_x[i] < 0 || r_x[i] >= L) {
+            v_x[i] = -v_x[i]; //- elastic walls
+            psum += 2*m*fabs(v_x[i])/dt;  // contribution to pressure from "left" walls
+        }
+        
+        if (r_y[i] < 0 || r_y[i] >= L) {
+            v_y[i] = -v_y[i]; //- elastic walls
+            psum += 2*m*fabs(v_y[i])/dt;  // contribution to pressure from "left" walls
+        }
+        
+        if (r_z[i] < 0 || r_z[i] >= L) {
+            v_z[i] = -v_z[i]; //- elastic walls
+            psum += 2*m*fabs(v_z[i])/dt;  // contribution to pressure from "left" walls
         }
     }
-    
-    
-    /* removed, uncomment to save atoms positions */
-    /*for (i=0; i<N; i++) {
-        fprintf(fp,"%s",atype);
-        for (j=0; j<3; j++) {
-            fprintf(fp,"  %12.10e ",r[i][j]);
-        }
-        fprintf(fp,"\n");
-    }*/
-    //fprintf(fp,"\n \n");
     
     return psum/(6*L*L);
 }
@@ -638,11 +647,10 @@ void initializeVelocities() {
     
     for (i=0; i<N; i++) {
         
-        for (j=0; j<3; j++) {
-            //  Pull a number from a Gaussian Distribution
-            v[i][j] = gaussdist();
-            
-        }
+        //  Pull a number from a Gaussian Distribution
+        v_x[i] = gaussdist();
+        v_y[i] = gaussdist();
+        v_z[i] = gaussdist();
     }
     
     // Vcm = sum_i^N  m*v_i/  sum_i^N  M
@@ -650,11 +658,9 @@ void initializeVelocities() {
     double vCM[3] = {0, 0, 0};
     
     for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            
-            vCM[j] += m*v[i][j];
-            
-        }
+        vCM[0] += m*v_x[i];
+        vCM[1] += m*v_y[i];
+        vCM[2] += m*v_z[i];
     }
     
     
@@ -665,33 +671,26 @@ void initializeVelocities() {
     //  center of mass velocity to zero so that the system does
     //  not drift in space!
     for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            
-            v[i][j] -= vCM[j];
-            
-        }
+        v_x[i] -= vCM[0];
+        v_y[i] -= vCM[1];
+        v_z[i] -= vCM[2];
     }
     
     //  Now we want to scale the average velocity of the system
     //  by a factor which is consistent with our initial temperature, Tinit
-    double vSqdSum, lambda;
-    vSqdSum=0.;
+    double vSqdSum = 0;
     for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            
-            vSqdSum += v[i][j]*v[i][j];
-            
-        }
+        vSqdSum += v_x[i]*v_x[i];
+        vSqdSum += v_y[i]*v_y[i];
+        vSqdSum += v_z[i]*v_z[i];
     }
     
-    lambda = sqrt( 3*(N-1)*Tinit/vSqdSum);
+    double lambda = sqrt( 3*(N-1)*Tinit/vSqdSum);
     
     for (i=0; i<N; i++) {
-        for (j=0; j<3; j++) {
-            
-            v[i][j] *= lambda;
-            
-        }
+        v_x[i] *= lambda;
+        v_y[i] *= lambda;
+        v_z[i] *= lambda;
     }
 }
 
