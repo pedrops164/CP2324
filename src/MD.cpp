@@ -488,7 +488,6 @@ double Potential() {
             Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
         }
     }
-
     return Pot;
 }
 
@@ -544,6 +543,9 @@ void computeAccelerations() {
         }
     }
     for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
+        double ai0 = 0;
+        double ai1 = 0;
+        double ai2 = 0;
         for (j = i+1; j < N; j++) {
             
             //  component-by-component position of i relative to j
@@ -558,15 +560,17 @@ void computeAccelerations() {
             //double f = 24 * (2 * pow_by_squaring(rSqd, -7) - pow_by_squaring(rSqd, -4));
             double f = 24 * (2 * std::pow(rSqd, -7) - std::pow(rSqd, -4));
 
-            a[i][0] += rij_0 * f;
+            ai0 += rij_0 * f;
+            ai1 += rij_1 * f;
+            ai2 += rij_2 * f;
+
             a[j][0] -= rij_0 * f;
-
-            a[i][1] += rij_1 * f;
             a[j][1] -= rij_1 * f;
-
-            a[i][2] += rij_2 * f;
             a[j][2] -= rij_2 * f;
         }
+        a[i][0] += ai0;
+        a[i][1] += ai1;
+        a[i][2] += ai2;
     }
 }
 
