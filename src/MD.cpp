@@ -467,57 +467,77 @@ double Potential() {
     */
     double Pot = 0.;
 
-    // size of each block to be processed once at a time
-    int blocksize = 256;
-    // total number of blocks that have size 128 (the last one if smaller than 128 isn't included)
-    int number_of_blocks = N/blocksize;
+    for (int i=0; i < N-1; i++) {
+        for(int j = i+1; j < N; j++) {
 
-    for (int i=0; i < number_of_blocks-1; i++) {
-        for(int j = i+1; j < number_of_blocks; j++) {
-            int start_i = i*blocksize;
-            int end_i = (i+1)*blocksize;
+            // we unroll the loop: computes the difference for each of the coordinates between the two particles
+            double diff1 = r[i][0] - r[j][0];
+            double diff2 = r[i][1] - r[j][1];
+            double diff3 = r[i][2] - r[j][2];
+            double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diff
+            //we can declare the following variables inside this scope
+            double rnorm = sqrt(r2);
+            double quot = sigma / rnorm;
             
-            int start_j = j*blocksize;
-            int end_j = (j+1)*blocksize;
-
-            for (int k=start_i; k<end_i; k++) {
-                for (int p=start_j; p<end_j; p++) {
-                    // we unroll the loop: computes the difference for each of the coordinates between the two particles
-                    double diff1 = r[k][0] - r[p][0];
-                    double diff2 = r[k][1] - r[p][1];
-                    double diff3 = r[k][2] - r[p][2];
-
-                    double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diffs
-
-                    //we can declare the following variables inside this scope
-                    double rnorm = sqrt(r2);
-                    double quot = sigma / rnorm;
-                    
-                    // previous implementation
-                    //double quot12 = pow(quot,12.);
-                    //double quot6 = pow(quot,6.);
-
-                    // optimized implementation
-                    double quot6 = std::pow(quot, 6);
-                    double quot12 = quot6*quot6; // manually calculate pow(quot,12.);
-
-                    Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
-                }
-            }
+            // previous implementation
+            //double quot12 = pow(quot,12.);
+            //double quot6 = pow(quot,6.)
+            // optimized implementation
+            double quot6 = std::pow(quot, 6);
+            double quot12 = quot6*quot6; // manually calculate pow(quot,12.)
+            Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
         }
     }
 
     return Pot;
 }
 
-
+//inline double calculatePotential(double r_i[3], double r_j[3]) {
+//    double diff1 = r_i[0] - r_j[0];
+//    double diff2 = r_i[1] - r_j[1];
+//    double diff3 = r_i[2] - r_j[2];
+//    double r2 = diff1 * diff1 + diff2 * diff2 + diff3 * diff3;
+//    double rnorm = sqrt(r2);
+//    double quot = sigma / rnorm;
+//    double quot6 = std::pow(quot, 6);
+//    double quot12 = quot6 * quot6;
+//    return 8 * epsilon * (quot12 - quot6);
+//}
+//
+//// Function to calculate the potential energy of the system
+//double Potential() {
+//    double Pot = 0.;
+//
+//    for (int i = 0; i < N-1; i++) {
+//        // Process pairs of elements in the inner loop
+//        int j = i+1;
+//        // Process groups of 8 elements in the inner loop
+//        for(; j+7 < N; j+=8) {
+//            Pot += calculatePotential(r[i], r[j]);
+//            Pot += calculatePotential(r[i], r[j+1]);
+//            Pot += calculatePotential(r[i], r[j+2]);
+//            Pot += calculatePotential(r[i], r[j+3]);
+//            Pot += calculatePotential(r[i], r[j+4]);
+//            Pot += calculatePotential(r[i], r[j+5]);
+//            Pot += calculatePotential(r[i], r[j+6]);
+//            Pot += calculatePotential(r[i], r[j+7]);
+//        }
+//
+//        // Process any remaining elements
+//        for(; j < N; j++) {
+//            Pot += calculatePotential(r[i], r[j]);
+//        }
+//    }
+//
+//    return Pot;
+//}
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the
 //   accelleration of each atom. 
 void computeAccelerations() {
     int i, j, k;
-    
+
     for (i = 0; i < N; i++) {  // set all accelerations to zero
         for (k = 0; k < 3; k++) {
             a[i][k] = 0;
@@ -525,16 +545,12 @@ void computeAccelerations() {
     }
     for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
         for (j = i+1; j < N; j++) {
-            // initialize r^2 to zero
-            double rSqd = 0;
-            double rij[3]; // position of i relative to j
             
-            for (k = 0; k < 3; k++) {
-                //  component-by-componenent position of i relative to j
-                rij[k] = r[i][k] - r[j][k];
-                //  sum of squares of the components
-                rSqd += rij[k] * rij[k];
-            }
+            //  component-by-component position of i relative to j
+            double rij_0 = r[i][0] - r[j][0];
+            double rij_1 = r[i][1] - r[j][1];
+            double rij_2 = r[i][2] - r[j][2];
+            double rSqd = rij_0*rij_0 + rij_1*rij_1 + rij_2*rij_2;
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
 
@@ -542,11 +558,14 @@ void computeAccelerations() {
             //double f = 24 * (2 * pow_by_squaring(rSqd, -7) - pow_by_squaring(rSqd, -4));
             double f = 24 * (2 * std::pow(rSqd, -7) - std::pow(rSqd, -4));
 
-            for (k = 0; k < 3; k++) {
-                //  from F = ma, where m = 1 in natural units!
-                a[i][k] += rij[k] * f;
-                a[j][k] -= rij[k] * f;
-            }
+            a[i][0] += rij_0 * f;
+            a[j][0] -= rij_0 * f;
+
+            a[i][1] += rij_1 * f;
+            a[j][1] -= rij_1 * f;
+
+            a[i][2] += rij_2 * f;
+            a[j][2] -= rij_2 * f;
         }
     }
 }
