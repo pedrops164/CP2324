@@ -36,6 +36,7 @@
 
 //  Lennard-Jones parameters in natural units!
 int sigma = 1;
+int sigma2 = 1; //sigma2 = sigma1 * sigma1
 int epsilon = 1;
 int epsilon8 = 8;
 int m = 1;
@@ -488,29 +489,35 @@ double Potential() {
             double diff3 = r_z[i] - r_z[j];
             double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diff
             //we can declare the following variables inside this scope
-            double rnorm = sqrt(r2);
-            double quot = sigma / rnorm;
+            //double rnorm = sqrt(r2);
+            //double quot = sigma / rnorm;
+
+            //this way we don't have to sqrt r2 which is an expensive calculation
+            double quot2 = sigma2 / r2;
             
             // previous implementation
             //double quot12 = pow(quot,12.);
             //double quot6 = pow(quot,6.)
             // optimized implementation
-            double quot6 = std::pow(quot, 6);
+            double quot6 = std::pow(quot2, 3); //quot6 = quot2*quot2*quot2 = (quot^2)^3
             double quot12 = quot6*quot6; // manually calculate pow(quot,12.)
-            Pot += 8 * epsilon * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
+            Pot += epsilon8 * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
         }
     }
 
     return Pot;
 }
 
-//inline double calculatePotential(double r_i[3], double r_j[3]) {
-//    double diff1 = r_i[0] - r_j[0];
-//    double diff2 = r_i[1] - r_j[1];
-//    double diff3 = r_i[2] - r_j[2];
+//inline double calculatePotential(int i, int j) {
+//    double diff1 = r_x[i] - r_x[j];
+//    double diff2 = r_y[i] - r_y[j];
+//    double diff3 = r_z[i] - r_z[j];
 //    double r2 = diff1 * diff1 + diff2 * diff2 + diff3 * diff3;
-//    double rnorm = sqrt(r2);
-//    double quot = sigma / rnorm;
+//    //double rnorm = sqrt(r2);
+//    //double quot = sigma / rnorm;
+//
+//    //like this we avoid calculating the sqrt of r2, which is a costly operation
+//    double quot = sigma * sigma / r2;
 //    double quot6 = std::pow(quot, 6);
 //    double quot12 = quot6 * quot6;
 //    return epsilon8 * (quot12 - quot6);
@@ -524,19 +531,19 @@ double Potential() {
 //        int j = i+1;
 //        // Process groups of 8 elements in the inner loop
 //        for(; j+7 < N; j+=8) {
-//            Pot += calculatePotential(r[i], r[j]);
-//            Pot += calculatePotential(r[i], r[j+1]);
-//            Pot += calculatePotential(r[i], r[j+2]);
-//            Pot += calculatePotential(r[i], r[j+3]);
-//            Pot += calculatePotential(r[i], r[j+4]);
-//            Pot += calculatePotential(r[i], r[j+5]);
-//            Pot += calculatePotential(r[i], r[j+6]);
-//            Pot += calculatePotential(r[i], r[j+7]);
+//            Pot += calculatePotential(i, j);
+//            Pot += calculatePotential(i, j+1);
+//            Pot += calculatePotential(i, j+2);
+//            Pot += calculatePotential(i, j+3);
+//            Pot += calculatePotential(i, j+4);
+//            Pot += calculatePotential(i, j+5);
+//            Pot += calculatePotential(i, j+6);
+//            Pot += calculatePotential(i, j+7);
 //        }
 //
 //        // Process any remaining elements
 //        for(; j < N; j++) {
-//            Pot += calculatePotential(r[i], r[j]);
+//            Pot += calculatePotential(i, j);
 //        }
 //    }
 //

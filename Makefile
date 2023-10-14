@@ -1,4 +1,4 @@
-CC = gcc
+CC = g++
 SRC = src/
 CFLAGS = -pg -Ofast -ftree-vectorize -fprefetch-loop-arrays -march=native -fno-math-errno -mavx -msse4 # -fno-fast-math -funroll-all-loops -ftree-vectorizer-verbose=6
 
