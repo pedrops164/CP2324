@@ -34,10 +34,11 @@
 # define N 2160
 
 //  Lennard-Jones parameters in natural units!
-double sigma = 1.;
-double epsilon = 1.;
-double m = 1.;
-double kB = 1.;
+int sigma = 1;
+int epsilon = 1;
+int epsilon8 = 8;
+int m = 1;
+int kB = 1;
 
 double NA = 6.022140857e23;
 double kBSI = 1.38064852e-23;  // m^2*kg/(s^2*K)
