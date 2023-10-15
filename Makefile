@@ -1,6 +1,6 @@
 CC = g++
 SRC = src/
-CFLAGS = -pg -Ofast -ftree-vectorize -fprefetch-loop-arrays -march=native -fno-math-errno -mavx -msse4 # -fno-fast-math -funroll-all-loops -ftree-vectorizer-verbose=6
+CFLAGS = -pg -Ofast -ftree-vectorize -fprefetch-loop-arrays -march=native -fno-math-errno -mavx -msse4.1 -funroll-all-loops # -fno-fast-math -ftree-vectorizer-verbose=6
 
 .DEFAULT_GOAL = MD.exe
 

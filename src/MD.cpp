@@ -28,11 +28,10 @@
 #include<math.h>
 #include<cmath>
 #include<string.h>
-#include <smmintrin.h>  // Required for SSE4.1
 
 // Number of particles
 //int N;
-# define N 2160
+const int N = 2160;
 
 //  Lennard-Jones parameters in natural units!
 int sigma = 1;
@@ -50,26 +49,29 @@ double L;
 
 //  Initial Temperature in Natural Units
 double Tinit;  //2;
-//  Vectors!
-//
+
+// Max number of particles
 const int MAXPART=5001;
+
+/*
+Here we define the Position, Velocity, Acceleration and Force matrices as 3 seperate arrays instead.
+We use Structure of Arrays instead of Array of Structures.
+With this implementation, since a cache line can hold 8 doubles, every time an element of the array is accessed in the memory, that element and the next 7 doubles
+are copied to the cache. This will be helpful because this program demonstrates temporal and spatial locality, so this aspect is very useful
+*/
 //  Position
-//double r[N][3];
 double r_x[N];
 double r_y[N];
 double r_z[N];
 //  Velocity
-//double v[N][3];
 double v_x[N];
 double v_y[N];
 double v_z[N];
 //  Acceleration
-//double a[N][3];
 double a_x[N];
 double a_y[N];
 double a_z[N];
 //  Force
-//double F[N][3];
 double F_x[N];
 double F_y[N];
 double F_z[N];
@@ -106,7 +108,7 @@ int main()
     int i;
     double dt, Vol, Temp, Press, Pavg, Tavg, rho;
     double VolFac, TempFac, PressFac, timefac;
-    double KE, PE, mvs, gc, Z;
+    double KE, PE, mvs;
     char prefix[1000], tfn[1000], ofn[1000], afn[1000];
     FILE *infp, *tfp, *ofp, *afp;
     
@@ -337,8 +339,8 @@ int main()
         // Instantaneous gas constant and compressibility - not well defined because
         // pressure may be zero in some instances because there will be zero wall collisions,
         // pressure may be very high in some instances because there will be a number of collisions
-        gc = NA*Press*(Vol*VolFac)/(N*Temp);
-        Z  = Press*(Vol*VolFac)/(N*kBSI*Temp);
+        //gc = NA*Press*(Vol*VolFac)/(N*Temp);
+        //Z  = Press*(Vol*VolFac)/(N*kBSI*Temp);
         
         Tavg += Temp;
         Pavg += Press;
@@ -352,8 +354,8 @@ int main()
     // we can take the average over the whole simulation here
     Pavg /= NumTime;
     Tavg /= NumTime;
-    Z = Pavg*(Vol*VolFac)/(N*kBSI*Tavg);
-    gc = NA*Pavg*(Vol*VolFac)/(N*Tavg);
+    double Z = Pavg*(Vol*VolFac)/(N*kBSI*Tavg);
+    double gc = NA*Pavg*(Vol*VolFac)/(N*Tavg);
     fprintf(afp,"  Total Time (s)      T (K)               P (Pa)      PV/nT (J/(mol K))         Z           V (m^3)              N\n");
     fprintf(afp," --------------   -----------        ---------------   --------------   ---------------   ------------   -----------\n");
     fprintf(afp,"  %8.4e  %15.5f       %15.5f     %10.5f       %10.5f        %10.5e         %i\n",i*dt*timefac,Tavg,Pavg,gc,Z,Vol*VolFac,N);
@@ -381,23 +383,19 @@ int main()
 
 
 void initialize() {
-    int n, p, i, j, k;
-    double pos;
-    
     // Number of atoms in each direction
-    n = int(ceil(pow(N, 1.0/3)));
+    int n = int(ceil(pow(N, 1.0/3)));
     
     //  spacing between atoms along a given direction
-    pos = L / n;
+    double pos = L / n;
     
     //  index for number of particles assigned positions
-    p = 0;
+    int p = 0;
     //  initialize positions
-    for (i=0; i<n; i++) {
-        for (j=0; j<n; j++) {
-            for (k=0; k<n; k++) {
+    for (int i=0; i<n; i++) {
+        for (int j=0; j<n; j++) {
+            for (int k=0; k<n; k++) {
                 if (p<N) {
-                    
                     r_x[p] = (i + 0.5)*pos;
                     r_y[p] = (j + 0.5)*pos;
                     r_z[p] = (k + 0.5)*pos;
@@ -483,25 +481,41 @@ double Potential() {
     for (int i=0; i < N-1; i++) {
         for(int j = i+1; j < N; j++) {
 
-            // we unroll the loop: computes the difference for each of the coordinates between the two particles
-            double diff1 = r_x[i] - r_x[j];
-            double diff2 = r_y[i] - r_y[j];
-            double diff3 = r_z[i] - r_z[j];
-            double r2 = diff1 * diff1 + diff2*diff2 + diff3*diff3; //sums up all the diff
-            //we can declare the following variables inside this scope
-            //double rnorm = sqrt(r2);
-            //double quot = sigma / rnorm;
+            // we unroll the k loop: computes the difference for each of the coordinates between the two particles
+            // we square the differences of each coordinate between the two particles and we sum them up.
+            double rij_0 = r_x[i] - r_x[j]; // x distance between the two particles
+            double rij_1 = r_y[i] - r_y[j]; // y distance between the two particles
+            double rij_2 = r_z[i] - r_z[j]; // z distance between the two particles
+            double sq0 = rij_0*rij_0;
+            double sq1 = rij_1*rij_1;
+            double sq2 = rij_2*rij_2;
+            // This is the square of the distance between the two particles
+            double distance_sqrd = sq0 + sq1 + sq2;
 
-            //this way we don't have to sqrt r2 which is an expensive calculation
-            double quot2 = sigma2 / r2;
+            /*
+            Instead the following calculation:    quot = sigma / sqrt(distance_sqrd)
+
+            We calculate:    quot^2 = (sigma / sqrt(distance_sqrd))^2
+                                    = sigma^2 / distance_sqrd
+                                    = sigma * sigma / distance_sqrd
+
+            This way, we avoid calculating the square root of distance_sqrd, which is an expensive calculation
+
+            Due to the fact that after calculating quot we need to calculate quot^6 and quot^12, it is actually useful to calculate quot^2
+            directly and just calculating the other two powers from quot^2, which is what we do below:
+            */
             
-            // previous implementation
-            //double quot12 = pow(quot,12.);
-            //double quot6 = pow(quot,6.)
-            // optimized implementation
-            double quot6 = std::pow(quot2, 3); //quot6 = quot2*quot2*quot2 = (quot^2)^3
-            double quot12 = quot6*quot6; // manually calculate pow(quot,12.)
-            Pot += epsilon8 * (quot12 - quot6);  // Multiplying by 8 instead of 4 to account for the symmetry
+            double quot2 = sigma2 / distance_sqrd;
+            /*
+            Here we calculate quot^6 and quot^12 by calling the function 'pow', but with integer exponents because the function runs faster.
+            Calculating these values this way is way faster because 
+            */
+            double quot6 = pow(quot2, 3); //quot6 = quot2*quot2*quot2 = (quot^2)^3
+            double quot12 = pow(quot6, 2); // quot12 = quot6*quot6 = quot6^2
+
+            // We multiply by 8 instead of 4 to account for the symmetry property when calculating the Potential
+            // Every pair of particle is only processed once instead of twice this way
+            Pot += epsilon8 * (quot12 - quot6);  
         }
     }
 
@@ -557,28 +571,37 @@ void computeAccelerations() {
     int i, j, k;
 
     for (i = 0; i < N; i++) {  // set all accelerations to zero
+        // we unroll the k loop
         a_x[i] = 0;
         a_y[i] = 0;
         a_z[i] = 0;
     }
     for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
+
+        // we define temporary variables so that we don't access the memory so often in the j loop
         double ai0 = 0;
         double ai1 = 0;
         double ai2 = 0;
+
         for (j = i+1; j < N; j++) {
             
-            //  component-by-component position of i relative to j
-            double rij_0 = r_x[i] - r_x[j];
-            double rij_1 = r_y[i] - r_y[j];
-            double rij_2 = r_z[i] - r_z[j];
-            double rSqd = rij_0*rij_0 + rij_1*rij_1 + rij_2*rij_2;
+            // we unroll the k loop: computes the difference for each of the coordinates between the two particles
+            // we square the differences of each coordinate between the two particles and we sum them up.
+            double rij_0 = r_x[i] - r_x[j]; // x distance between the two particles
+            double rij_1 = r_y[i] - r_y[j]; // y distance between the two particles
+            double rij_2 = r_z[i] - r_z[j]; // z distance between the two particles
+            double sq0 = rij_0*rij_0;
+            double sq1 = rij_1*rij_1;
+            double sq2 = rij_2*rij_2;
+            // This is the square of the distance between the two particles
+            double distance_sqrd = sq0 + sq1 + sq2;
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
+            double f = 24 * (2 * pow(distance_sqrd, -7) - pow(distance_sqrd, -4));
 
-            // doing the pow with std::pow from <math.h> saves a lot of timme!!!
-            //double f = 24 * (2 * pow_by_squaring(rSqd, -7) - pow_by_squaring(rSqd, -4));
-            double f = 24 * (2 * std::pow(rSqd, -7) - std::pow(rSqd, -4));
 
+            // we unroll the k loop
+            // Since the value of i doesn't change inside the j loop, we can access the temporary variables instead of accessing the memory each iteration
             ai0 += rij_0 * f;
             ai1 += rij_1 * f;
             ai2 += rij_2 * f;
@@ -587,6 +610,7 @@ void computeAccelerations() {
             a_y[j] -= rij_1 * f;
             a_z[j] -= rij_2 * f;
         }
+        // we update the memory with the value of the temporary variables calculated inside the j loop
         a_x[i] += ai0;
         a_y[i] += ai1;
         a_z[i] += ai2;
