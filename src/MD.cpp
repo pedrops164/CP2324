@@ -451,15 +451,14 @@ double MeanSquaredVelocity() {
 //  Function to calculate the kinetic energy of the system
 double Kinetic() { //Write Function here!  
     
-    double v2, kin;
     
-    kin =0.;
+    double kin = 0.;
     for (int i=0; i<N; i++) {
         
-        v2 = 0.;
-        v2 += v_x[i] * v_x[i];
-        v2 += v_y[i] * v_y[i];
-        v2 += v_z[i] * v_z[i];
+        double vxi = v_x[i] * v_x[i];
+        double vyi = v_y[i] * v_y[i];
+        double vzi = v_z[i] * v_z[i];
+        double v2 = vxi + vyi + vzi;
         kin += m*v2/2.;
         
     }
@@ -510,8 +509,8 @@ double Potential() {
             Here we calculate quot^6 and quot^12 by calling the function 'pow', but with integer exponents because the function runs faster.
             Calculating these values this way is way faster because 
             */
-            double quot6 = pow(quot2, 3); //quot6 = quot2*quot2*quot2 = (quot^2)^3
-            double quot12 = pow(quot6, 2); // quot12 = quot6*quot6 = quot6^2
+            double quot6 = quot2*quot2*quot2;  //quot6 = (quot^2)^3
+            double quot12 = quot6*quot6; // quot12 = quot6^2
 
             // We multiply by 8 instead of 4 to account for the symmetry property when calculating the Potential
             // Every pair of particle is only processed once instead of twice this way
@@ -595,9 +594,20 @@ void computeAccelerations() {
             double sq2 = rij_2*rij_2;
             // This is the square of the distance between the two particles
             double distance_sqrd = sq0 + sq1 + sq2;
+
+            // d1 is the inverse of the square of the distance
+            double d1 = 1 / distance_sqrd;
+            // d2 = d1^2
+            double d2 = d1*d1;
+            // d4 = d2^2 = d1^4
+            double d4 = d2*d2;
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
-            double f = 24 * (2 * pow(distance_sqrd, -7) - pow(distance_sqrd, -4));
+            //double f = 24 * (2 * pow(distance_sqrd, -7) - pow(distance_sqrd, -4));
+
+            // pow(distance_sqrd, -7) = d1^7 = d1^4 * d1^2 * d1 = d4*d2*d1
+            // pow(distance_sqrd, -4) = d1^4 = d4
+            double f = 24 * (2 * d4*d2*d1 - d4);
 
 
             // we unroll the k loop
