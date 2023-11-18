@@ -33,6 +33,9 @@
 //int N;
 const int N = 5000;
 
+// Number of threads
+const int nworkers = 4;
+
 //  Lennard-Jones parameters in natural units!
 int sigma = 1;
 int sigma2 = 1; //sigma2 = sigma1 * sigma1
@@ -302,6 +305,7 @@ int main()
     int tenp = floor(NumTime/10);
     fprintf(ofp,"  time (s)              T(t) (K)              P(t) (Pa)           Kinetic En. (n.u.)     Potential En. (n.u.) Total En. (n.u.)\n");
     printf("  PERCENTAGE OF CALCULATION COMPLETE:\n  [");
+    //#pragma omp parallel num_threads(nworkers)
     for (i=0; i<NumTime+1; i++) {
         
         //  This just prints updates on progress of the calculation for the users convenience
@@ -567,22 +571,23 @@ double Potential() {
 //   the forces on each atom.  Then uses a = F/m to calculate the
 //   accelleration of each atom. 
 void computeAccelerations() {
-    int i, j, k;
 
-    for (i = 0; i < N; i++) {  // set all accelerations to zero
+    for (int i = 0; i < N; i++) {  // set all accelerations to zero
         // we unroll the k loop
         a_x[i] = 0;
         a_y[i] = 0;
         a_z[i] = 0;
     }
-    for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
+
+    // Declare the variables outside the parallel region
+    double ai0, ai1, ai2;
+    for (int i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
 
         // we define temporary variables so that we don't access the memory so often in the j loop
-        double ai0 = 0;
-        double ai1 = 0;
-        double ai2 = 0;
+        ai0 = ai1 = ai2 = 0;
 
-        for (j = i+1; j < N; j++) {
+        #pragma omp parallel for schedule(static,100) reduction(+:ai0) reduction(+:ai1) reduction(+:ai2) num_threads(nworkers)
+        for (int j = i+1; j < N; j++) {
             
             // we unroll the k loop: computes the difference for each of the coordinates between the two particles
             // we square the differences of each coordinate between the two particles and we sum them up.
@@ -612,17 +617,30 @@ void computeAccelerations() {
 
             // we unroll the k loop
             // Since the value of i doesn't change inside the j loop, we can access the temporary variables instead of accessing the memory each iteration
+            //#pragma omp atomic
             ai0 += rij_0 * f;
+            //#pragma omp atomic
             ai1 += rij_1 * f;
+            //#pragma omp atomic
             ai2 += rij_2 * f;
 
+            //a_x[i] += rij_0 * f;
+            //a_y[i] += rij_1 * f;
+            //a_z[i] += rij_2 * f;
+
+            //#pragma omp atomic
             a_x[j] -= rij_0 * f;
+            //#pragma omp atomic
             a_y[j] -= rij_1 * f;
+            //#pragma omp atomic
             a_z[j] -= rij_2 * f;
         }
         // we update the memory with the value of the temporary variables calculated inside the j loop
+        //#pragma omp atomic
         a_x[i] += ai0;
+        //#pragma omp atomic
         a_y[i] += ai1;
+        //#pragma omp atomic
         a_z[i] += ai2;
     }
 }
