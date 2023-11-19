@@ -1,7 +1,9 @@
 CC = g++
 SRC = src/
-CFLAGS = -pg -Ofast -ftree-vectorize -fprefetch-loop-arrays -march=native -fno-math-errno -mavx -msse4.1 -funroll-all-loops -fno-inline # -fno-fast-math -ftree-vectorizer-verbose=6
-
+CFLAGS = -pg -Ofast -ftree-vectorize -fprefetch-loop-arrays -march=native -mavx -msse4.1 -funroll-all-loops
+#CFLAGS = -pg -O3 -funroll-all-loops -ftree-vectorize -fmath-errno -mavx -fopenmp
+#-fno-math-errno #-fno-inline # -fno-fast-math -ftree-vectorizer-verbose=6
+#CFLAGS += -flto -fgraphite-identity -floop-nest-optimize -mtune=native
 .DEFAULT_GOAL = all
 
 all: MDseq.exe MDpar.exe
@@ -18,7 +20,8 @@ MDpar.exe: $(SRC)/MDpar.cpp
 	$(CC) $(CFLAGS) $(SRC)MDpar.cpp -lm -fopenmp -o MDpar.exe
 
 clean:
-	rm ./MD.exe
+	rm ./MDpar.exe
+	rm ./MDseq.exe
 
 runseq:
 	./MDseq.exe < inputdata.txt

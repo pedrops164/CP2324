@@ -28,10 +28,7 @@
 #include<math.h>
 #include<cmath>
 #include<string.h>
-
-// Number of particles
-//int N;
-const int N = 5000;
+#include "data_structures.h"
 
 //  Lennard-Jones parameters in natural units!
 int sigma = 1;
@@ -59,22 +56,14 @@ We use Structure of Arrays instead of Array of Structures.
 With this implementation, since a cache line can hold 8 doubles, every time an element of the array is accessed in the memory, that element and the next 7 doubles
 are copied to the cache. This will be helpful because this program demonstrates temporal and spatial locality, so this aspect is very useful
 */
-//  Position
-double r_x[N];
-double r_y[N];
-double r_z[N];
-//  Velocity
-double v_x[N];
-double v_y[N];
-double v_z[N];
-//  Acceleration
-double a_x[N];
-double a_y[N];
-double a_z[N];
-//  Force
-double F_x[N];
-double F_y[N];
-double F_z[N];
+//  Position data structure
+Position position;
+//  Velocity data structure
+Velocity velocity;
+//  Acceleration data structure
+Acceleration acceleration;
+//  Force data structure
+Force force;
 
 // atom type
 char atype[10];
@@ -84,10 +73,10 @@ void initialize();
 //  update positions and velocities using Velocity Verlet algorithm 
 //  print particle coordinates to file for rendering via VMD or other animation software
 //  return 'instantaneous pressure'
-double VelocityVerlet(double dt, int iter, FILE *fp);  
+double VelocityVerlet(double dt, int iter, FILE *fp, double * PE);  
 //  Compute Force using F = -dV/dr
 //  solve F = ma for use in Velocity Verlet
-void computeAccelerations();
+double computeAccelerations();
 //  Numerical Recipes function for generation gaussian distribution
 double gaussdist();
 //  Initialize velocities according to user-supplied initial Temperature (Tinit)
@@ -321,7 +310,7 @@ int main()
         // This updates the positions and velocities using Newton's Laws
         // Also computes the Pressure as the sum of momentum changes from wall collisions / timestep
         // which is a Kinetic Theory of gasses concept of Pressure
-        Press = VelocityVerlet(dt, i+1, tfp);
+        Press = VelocityVerlet(dt, i+1, tfp, &PE);
         Press *= PressFac;
         
         //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -331,7 +320,7 @@ int main()
         //  We would also like to use the IGL to try to see if we can extract the gas constant
         mvs = MeanSquaredVelocity();
         KE = Kinetic();
-        PE = Potential();
+        //PE = Potential();
         
         // Temperature from Kinetic Theory
         Temp = m*mvs/(3*kB) * TempFac;
@@ -396,9 +385,9 @@ void initialize() {
         for (int j=0; j<n; j++) {
             for (int k=0; k<n; k++) {
                 if (p<N) {
-                    r_x[p] = (i + 0.5)*pos;
-                    r_y[p] = (j + 0.5)*pos;
-                    r_z[p] = (k + 0.5)*pos;
+                    position.x[p] = (i + 0.5)*pos;
+                    position.y[p] = (j + 0.5)*pos;
+                    position.z[p] = (k + 0.5)*pos;
                 }
                 p++;
             }
@@ -436,9 +425,9 @@ double MeanSquaredVelocity() {
     
     for (int i=0; i<N; i++) {
         
-        vx2 = vx2 + v_x[i]*v_x[i];
-        vy2 = vy2 + v_y[i]*v_y[i];
-        vz2 = vz2 + v_z[i]*v_z[i];
+        vx2 = vx2 + velocity.x[i]*velocity.x[i];
+        vy2 = vy2 + velocity.y[i]*velocity.y[i];
+        vz2 = vz2 + velocity.z[i]*velocity.z[i];
         
     }
     v2 = (vx2+vy2+vz2)/N;
@@ -455,9 +444,9 @@ double Kinetic() { //Write Function here!
     double kin = 0.;
     for (int i=0; i<N; i++) {
         
-        double vxi = v_x[i] * v_x[i];
-        double vyi = v_y[i] * v_y[i];
-        double vzi = v_z[i] * v_z[i];
+        double vxi = velocity.x[i] * velocity.x[i];
+        double vyi = velocity.y[i] * velocity.y[i];
+        double vzi = velocity.z[i] * velocity.z[i];
         double v2 = vxi + vyi + vzi;
         kin += m*v2/2.;
         
@@ -482,9 +471,9 @@ double Potential() {
 
             // we unroll the k loop: computes the difference for each of the coordinates between the two particles
             // we square the differences of each coordinate between the two particles and we sum them up.
-            double rij_0 = r_x[i] - r_x[j]; // x distance between the two particles
-            double rij_1 = r_y[i] - r_y[j]; // y distance between the two particles
-            double rij_2 = r_z[i] - r_z[j]; // z distance between the two particles
+            double rij_0 = position.x[i] - position.x[j]; // x distance between the two particles
+            double rij_1 = position.y[i] - position.y[j]; // y distance between the two particles
+            double rij_2 = position.z[i] - position.z[j]; // z distance between the two particles
             double sq0 = rij_0*rij_0;
             double sq1 = rij_1*rij_1;
             double sq2 = rij_2*rij_2;
@@ -522,9 +511,9 @@ double Potential() {
 }
 
 //inline double calculatePotential(int i, int j) {
-//    double diff1 = r_x[i] - r_x[j];
-//    double diff2 = r_y[i] - r_y[j];
-//    double diff3 = r_z[i] - r_z[j];
+//    double diff1 = position.x[i] - position.x[j];
+//    double diff2 = position.y[i] - position.y[j];
+//    double diff3 = position.z[i] - position.z[j];
 //    double r2 = diff1 * diff1 + diff2 * diff2 + diff3 * diff3;
 //    //double rnorm = sqrt(r2);
 //    //double quot = sigma / rnorm;
@@ -566,41 +555,58 @@ double Potential() {
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the
 //   accelleration of each atom. 
-void computeAccelerations() {
-    int i, j, k;
+// Returns the Potential
+double computeAccelerations() {
 
-    for (i = 0; i < N; i++) {  // set all accelerations to zero
+    for (int i = 0; i < N; i++) {  // set all accelerations to zero
         // we unroll the k loop
-        a_x[i] = 0;
-        a_y[i] = 0;
-        a_z[i] = 0;
+        acceleration.x[i] = 0;
+        acceleration.y[i] = 0;
+        acceleration.z[i] = 0;
     }
-    for (i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
+
+    double Pot = 0.;
+    // Declare the variables outside the parallel region
+    //#pragma omp parallel for schedule(dynamic) reduction(+:Pot)
+    for (int i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
 
         // we define temporary variables so that we don't access the memory so often in the j loop
-        double ai0 = 0;
-        double ai1 = 0;
-        double ai2 = 0;
+        double ai0=0, ai1=0, ai2=0;
 
-        for (j = i+1; j < N; j++) {
+        #pragma omp parallel for schedule(static) reduction(+:ai0,ai1,ai2,Pot)
+        for (int j = i+1; j < N; j++) {
             
             // we unroll the k loop: computes the difference for each of the coordinates between the two particles
             // we square the differences of each coordinate between the two particles and we sum them up.
-            double rij_0 = r_x[i] - r_x[j]; // x distance between the two particles
-            double rij_1 = r_y[i] - r_y[j]; // y distance between the two particles
-            double rij_2 = r_z[i] - r_z[j]; // z distance between the two particles
+            double rij_0 = position.x[i] - position.x[j]; // x distance between the two particles
+            double rij_1 = position.y[i] - position.y[j]; // y distance between the two particles
+            double rij_2 = position.z[i] - position.z[j]; // z distance between the two particles
             double sq0 = rij_0*rij_0;
             double sq1 = rij_1*rij_1;
             double sq2 = rij_2*rij_2;
             // This is the square of the distance between the two particles
             double distance_sqrd = sq0 + sq1 + sq2;
-
+            
             // d1 is the inverse of the square of the distance
             double d1 = 1 / distance_sqrd;
             // d2 = d1^2
             double d2 = d1*d1;
             // d4 = d2^2 = d1^4
             double d4 = d2*d2;
+
+            /* POTENTIAL CODE */
+            //double quot2 = sigma2 / distance_sqrd;
+            double quot2 = sigma2 * d1;
+            /*
+            Here we calculate quot^6 and quot^12 by calling the function 'pow', but with integer exponents because the function runs faster.
+            Calculating these values this way is way faster because 
+            */
+            double quot6 = quot2*quot2*quot2;  //quot6 = (quot^2)^3
+            double quot12 = quot6*quot6; // quot12 = quot6^2
+
+            // We multiply by 8 instead of 4 to account for the symmetry property when calculating the Potential
+            // Every pair of particle is only processed once instead of twice this way
+            Pot += epsilon8 * (quot12 - quot6);  
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
             //double f = 24 * (2 * pow(distance_sqrd, -7) - pow(distance_sqrd, -4));
@@ -608,27 +614,31 @@ void computeAccelerations() {
             // pow(distance_sqrd, -7) = d1^7 = d1^4 * d1^2 * d1 = d4*d2*d1
             // pow(distance_sqrd, -4) = d1^4 = d4
             double f = 24 * (2 * d4*d2*d1 - d4);
+            double rij0f = rij_0 * f;
+            double rij1f = rij_1 * f;
+            double rij2f = rij_2 * f;
 
 
             // we unroll the k loop
             // Since the value of i doesn't change inside the j loop, we can access the temporary variables instead of accessing the memory each iteration
-            ai0 += rij_0 * f;
-            ai1 += rij_1 * f;
-            ai2 += rij_2 * f;
+            ai0 += rij0f;
+            ai1 += rij1f;
+            ai2 += rij2f;
 
-            a_x[j] -= rij_0 * f;
-            a_y[j] -= rij_1 * f;
-            a_z[j] -= rij_2 * f;
+            acceleration.x[j] -= rij0f;
+            acceleration.y[j] -= rij1f;
+            acceleration.z[j] -= rij2f;
         }
         // we update the memory with the value of the temporary variables calculated inside the j loop
-        a_x[i] += ai0;
-        a_y[i] += ai1;
-        a_z[i] += ai2;
+        acceleration.x[i] += ai0;
+        acceleration.y[i] += ai1;
+        acceleration.z[i] += ai2;
     }
+    return Pot;
 }
 
 // returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
-double VelocityVerlet(double dt, int iter, FILE *fp) {
+double VelocityVerlet(double dt, int iter, FILE *fp, double * PE) {
     int i, j, k;
     
     double psum = 0.;
@@ -639,42 +649,42 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
     //  Update positions and velocity with current velocity and acceleration
     //printf("  Updated Positions!\n");
     for (i=0; i<N; i++) {
-        r_x[i] += v_x[i]*dt + 0.5*a_x[i]*dt*dt;
-        v_x[i] += 0.5*a_x[i]*dt;
+        position.x[i] += velocity.x[i]*dt + 0.5*acceleration.x[i]*dt*dt;
+        velocity.x[i] += 0.5*acceleration.x[i]*dt;
         
-        r_y[i] += v_y[i]*dt + 0.5*a_y[i]*dt*dt;
-        v_y[i] += 0.5*a_y[i]*dt;
+        position.y[i] += velocity.y[i]*dt + 0.5*acceleration.y[i]*dt*dt;
+        velocity.y[i] += 0.5*acceleration.y[i]*dt;
         
-        r_z[i] += v_z[i]*dt + 0.5*a_z[i]*dt*dt;
-        v_z[i] += 0.5*a_z[i]*dt;
+        position.z[i] += velocity.z[i]*dt + 0.5*acceleration.z[i]*dt*dt;
+        velocity.z[i] += 0.5*acceleration.z[i]*dt;
 
 
         //printf("  %i  %6.4e   %6.4e   %6.4e\n",i,r[i][0],r[i][1],r[i][2]);
     }
-    //  Update accellerations from updated positions
-    computeAccelerations();
+    //  Update accellerations from updated positions, and calculate potential
+    *PE = computeAccelerations();
     //  Update velocity with updated acceleration
     for (i=0; i<N; i++) {
-        v_x[i] += 0.5*a_x[i]*dt;
-        v_y[i] += 0.5*a_y[i]*dt;
-        v_z[i] += 0.5*a_z[i]*dt;
+        velocity.x[i] += 0.5*acceleration.x[i]*dt;
+        velocity.y[i] += 0.5*acceleration.y[i]*dt;
+        velocity.z[i] += 0.5*acceleration.z[i]*dt;
     }
     
     // Elastic walls
     for (i=0; i<N; i++) {
-        if (r_x[i] < 0 || r_x[i] >= L) {
-            v_x[i] = -v_x[i]; //- elastic walls
-            psum += 2*m*fabs(v_x[i])/dt;  // contribution to pressure from "left" walls
+        if (position.x[i] < 0 || position.x[i] >= L) {
+            velocity.x[i] = -velocity.x[i]; //- elastic walls
+            psum += 2*m*fabs(velocity.x[i])/dt;  // contribution to pressure from "left" walls
         }
         
-        if (r_y[i] < 0 || r_y[i] >= L) {
-            v_y[i] = -v_y[i]; //- elastic walls
-            psum += 2*m*fabs(v_y[i])/dt;  // contribution to pressure from "left" walls
+        if (position.y[i] < 0 || position.y[i] >= L) {
+            velocity.y[i] = -velocity.y[i]; //- elastic walls
+            psum += 2*m*fabs(velocity.y[i])/dt;  // contribution to pressure from "left" walls
         }
         
-        if (r_z[i] < 0 || r_z[i] >= L) {
-            v_z[i] = -v_z[i]; //- elastic walls
-            psum += 2*m*fabs(v_z[i])/dt;  // contribution to pressure from "left" walls
+        if (position.z[i] < 0 || position.z[i] >= L) {
+            velocity.z[i] = -velocity.z[i]; //- elastic walls
+            psum += 2*m*fabs(velocity.z[i])/dt;  // contribution to pressure from "left" walls
         }
     }
     
@@ -689,9 +699,9 @@ void initializeVelocities() {
     for (i=0; i<N; i++) {
         
         //  Pull a number from a Gaussian Distribution
-        v_x[i] = gaussdist();
-        v_y[i] = gaussdist();
-        v_z[i] = gaussdist();
+        velocity.x[i] = gaussdist();
+        velocity.y[i] = gaussdist();
+        velocity.z[i] = gaussdist();
     }
     
     // Vcm = sum_i^N  m*v_i/  sum_i^N  M
@@ -699,9 +709,9 @@ void initializeVelocities() {
     double vCM[3] = {0, 0, 0};
     
     for (i=0; i<N; i++) {
-        vCM[0] += m*v_x[i];
-        vCM[1] += m*v_y[i];
-        vCM[2] += m*v_z[i];
+        vCM[0] += m*velocity.x[i];
+        vCM[1] += m*velocity.y[i];
+        vCM[2] += m*velocity.z[i];
     }
     
     
@@ -712,26 +722,26 @@ void initializeVelocities() {
     //  center of mass velocity to zero so that the system does
     //  not drift in space!
     for (i=0; i<N; i++) {
-        v_x[i] -= vCM[0];
-        v_y[i] -= vCM[1];
-        v_z[i] -= vCM[2];
+        velocity.x[i] -= vCM[0];
+        velocity.y[i] -= vCM[1];
+        velocity.z[i] -= vCM[2];
     }
     
     //  Now we want to scale the average velocity of the system
     //  by a factor which is consistent with our initial temperature, Tinit
     double vSqdSum = 0;
     for (i=0; i<N; i++) {
-        vSqdSum += v_x[i]*v_x[i];
-        vSqdSum += v_y[i]*v_y[i];
-        vSqdSum += v_z[i]*v_z[i];
+        vSqdSum += velocity.x[i]*velocity.x[i];
+        vSqdSum += velocity.y[i]*velocity.y[i];
+        vSqdSum += velocity.z[i]*velocity.z[i];
     }
     
     double lambda = sqrt( 3*(N-1)*Tinit/vSqdSum);
     
     for (i=0; i<N; i++) {
-        v_x[i] *= lambda;
-        v_y[i] *= lambda;
-        v_z[i] *= lambda;
+        velocity.x[i] *= lambda;
+        velocity.y[i] *= lambda;
+        velocity.z[i] *= lambda;
     }
 }
 
