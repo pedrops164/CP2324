@@ -87,10 +87,10 @@ void initialize();
 //  update positions and velocities using Velocity Verlet algorithm 
 //  print particle coordinates to file for rendering via VMD or other animation software
 //  return 'instantaneous pressure'
-double VelocityVerlet(double dt, int iter, FILE *fp);  
+double VelocityVerlet(double dt, int iter, FILE *fp, double * PE);  
 //  Compute Force using F = -dV/dr
 //  solve F = ma for use in Velocity Verlet
-void computeAccelerations();
+double computeAccelerations();
 //  Numerical Recipes function for generation gaussian distribution
 double gaussdist();
 //  Initialize velocities according to user-supplied initial Temperature (Tinit)
@@ -325,7 +325,7 @@ int main()
         // This updates the positions and velocities using Newton's Laws
         // Also computes the Pressure as the sum of momentum changes from wall collisions / timestep
         // which is a Kinetic Theory of gasses concept of Pressure
-        Press = VelocityVerlet(dt, i+1, tfp);
+        Press = VelocityVerlet(dt, i+1, tfp, &PE);
         Press *= PressFac;
         
         //  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -335,7 +335,7 @@ int main()
         //  We would also like to use the IGL to try to see if we can extract the gas constant
         mvs = MeanSquaredVelocity();
         KE = Kinetic();
-        PE = Potential();
+        //PE = Potential();
         
         // Temperature from Kinetic Theory
         Temp = m*mvs/(3*kB) * TempFac;
@@ -570,7 +570,8 @@ double Potential() {
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the
 //   accelleration of each atom. 
-void computeAccelerations() {
+// Returns the Potential
+double computeAccelerations() {
 
     for (int i = 0; i < N; i++) {  // set all accelerations to zero
         // we unroll the k loop
@@ -579,14 +580,15 @@ void computeAccelerations() {
         a_z[i] = 0;
     }
 
+    double Pot = 0.;
     // Declare the variables outside the parallel region
-    double ai0, ai1, ai2;
+    //#pragma omp parallel for schedule(dynamic) reduction(+:Pot)
     for (int i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
 
         // we define temporary variables so that we don't access the memory so often in the j loop
-        ai0 = ai1 = ai2 = 0;
+        double ai0=0, ai1=0, ai2=0;
 
-        #pragma omp parallel for schedule(static,100) reduction(+:ai0) reduction(+:ai1) reduction(+:ai2) num_threads(nworkers)
+        #pragma omp parallel for schedule(static) reduction(+:ai0) reduction(+:ai1) reduction(+:ai2) reduction(+:Pot)
         for (int j = i+1; j < N; j++) {
             
             // we unroll the k loop: computes the difference for each of the coordinates between the two particles
@@ -599,13 +601,27 @@ void computeAccelerations() {
             double sq2 = rij_2*rij_2;
             // This is the square of the distance between the two particles
             double distance_sqrd = sq0 + sq1 + sq2;
-
+            
             // d1 is the inverse of the square of the distance
             double d1 = 1 / distance_sqrd;
             // d2 = d1^2
             double d2 = d1*d1;
             // d4 = d2^2 = d1^4
             double d4 = d2*d2;
+
+            /* POTENTIAL CODE */
+            //double quot2 = sigma2 / distance_sqrd;
+            double quot2 = sigma2 * d1;
+            /*
+            Here we calculate quot^6 and quot^12 by calling the function 'pow', but with integer exponents because the function runs faster.
+            Calculating these values this way is way faster because 
+            */
+            double quot6 = quot2*quot2*quot2;  //quot6 = (quot^2)^3
+            double quot12 = quot6*quot6; // quot12 = quot6^2
+
+            // We multiply by 8 instead of 4 to account for the symmetry property when calculating the Potential
+            // Every pair of particle is only processed once instead of twice this way
+            Pot += epsilon8 * (quot12 - quot6);  
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
             //double f = 24 * (2 * pow(distance_sqrd, -7) - pow(distance_sqrd, -4));
@@ -613,40 +629,31 @@ void computeAccelerations() {
             // pow(distance_sqrd, -7) = d1^7 = d1^4 * d1^2 * d1 = d4*d2*d1
             // pow(distance_sqrd, -4) = d1^4 = d4
             double f = 24 * (2 * d4*d2*d1 - d4);
+            double rij0f = rij_0 * f;
+            double rij1f = rij_1 * f;
+            double rij2f = rij_2 * f;
 
 
             // we unroll the k loop
             // Since the value of i doesn't change inside the j loop, we can access the temporary variables instead of accessing the memory each iteration
-            //#pragma omp atomic
-            ai0 += rij_0 * f;
-            //#pragma omp atomic
-            ai1 += rij_1 * f;
-            //#pragma omp atomic
-            ai2 += rij_2 * f;
+            ai0 += rij0f;
+            ai1 += rij1f;
+            ai2 += rij2f;
 
-            //a_x[i] += rij_0 * f;
-            //a_y[i] += rij_1 * f;
-            //a_z[i] += rij_2 * f;
-
-            //#pragma omp atomic
-            a_x[j] -= rij_0 * f;
-            //#pragma omp atomic
-            a_y[j] -= rij_1 * f;
-            //#pragma omp atomic
-            a_z[j] -= rij_2 * f;
+            a_x[j] -= rij0f;
+            a_y[j] -= rij1f;
+            a_z[j] -= rij2f;
         }
         // we update the memory with the value of the temporary variables calculated inside the j loop
-        //#pragma omp atomic
         a_x[i] += ai0;
-        //#pragma omp atomic
         a_y[i] += ai1;
-        //#pragma omp atomic
         a_z[i] += ai2;
     }
+    return Pot;
 }
 
 // returns sum of dv/dt*m/A (aka Pressure) from elastic collisions with walls
-double VelocityVerlet(double dt, int iter, FILE *fp) {
+double VelocityVerlet(double dt, int iter, FILE *fp, double * PE) {
     int i, j, k;
     
     double psum = 0.;
@@ -670,7 +677,7 @@ double VelocityVerlet(double dt, int iter, FILE *fp) {
         //printf("  %i  %6.4e   %6.4e   %6.4e\n",i,r[i][0],r[i][1],r[i][2]);
     }
     //  Update accellerations from updated positions
-    computeAccelerations();
+    *PE = computeAccelerations();
     //  Update velocity with updated acceleration
     for (i=0; i<N; i++) {
         v_x[i] += 0.5*a_x[i]*dt;
