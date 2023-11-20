@@ -590,13 +590,17 @@ double computeAccelerations() {
 
     double Pot = 0.;
     // Declare the variables outside the parallel region
-    //#pragma omp parallel for schedule(dynamic) reduction(+:Pot)
+    // we set the arrays in side the acceleration structure as local variables in order to be able to use them in
+    // the openmp reduction clause!!
+    double * acc_x = acceleration.x;
+    double * acc_y = acceleration.y;
+    double * acc_z = acceleration.z;
+    #pragma omp parallel for schedule(dynamic,50) reduction(+:Pot,acc_x[:N],acc_y[:N],acc_z[:N])
     for (int i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
-
         // we define temporary variables so that we don't access the memory so often in the j loop
         double ai0=0, ai1=0, ai2=0;
 
-        #pragma omp parallel for schedule(static) reduction(+:ai0,ai1,ai2,Pot)
+        //#pragma omp parallel for schedule(static,200) reduction(+:ai0,ai1,ai2,Pot)
         for (int j = i+1; j < N; j++) {
             
             // we unroll the k loop: computes the difference for each of the coordinates between the two particles
@@ -618,17 +622,6 @@ double computeAccelerations() {
             double d4 = d2*d2;
 
             Pot += calculateLocalPotency(d1);
-            ////double quot2 = sigma2 / distance_sqrd;
-            //double quot2 = sigma2 * d1;
-            ///*
-            //Here we calculate quot^6 and quot^12 by calling the function 'pow', but with integer exponents because the function runs faster.
-            //Calculating these values this way is way faster
-            //*/
-            //double quot6 = quot2*quot2*quot2;  //quot6 = (quot^2)^3
-            //double quot12 = quot6*quot6; // quot12 = quot6^
-            //// We multiply by 8 instead of 4 to account for the symmetry property when calculating the Potential
-            //// Every pair of particle should only be processed once instead of twice this way, to save computation time!
-            //Pot += epsilon8 * (quot12 - quot6); 
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
             //double f = 24 * (2 * pow(distance_sqrd, -7) - pow(distance_sqrd, -4));
@@ -644,15 +637,18 @@ double computeAccelerations() {
             ai0 += rij0f;
             ai1 += rij1f;
             ai2 += rij2f;
+            //acceleration.x[i] += rij0f;
+            //acceleration.y[i] += rij1f;
+            //acceleration.z[i] += rij2f;
 
-            acceleration.x[j] -= rij0f;
-            acceleration.y[j] -= rij1f;
-            acceleration.z[j] -= rij2f;
+            acc_x[j] -= rij0f;
+            acc_y[j] -= rij1f;
+            acc_z[j] -= rij2f;
         }
         // we update the memory with the value of the temporary variables calculated inside the j loop
-        acceleration.x[i] += ai0;
-        acceleration.y[i] += ai1;
-        acceleration.z[i] += ai2;
+        acc_x[i] += ai0;
+        acc_y[i] += ai1;
+        acc_z[i] += ai2;
     }
     return Pot;
 }
