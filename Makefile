@@ -1,8 +1,6 @@
 CC = gcc
 SRC = src/
-CFLAGS = -pg -Ofast -ftree-vectorize -fprefetch-loop-arrays -mavx -msse4.1 -funroll-all-loops
-#CFLAGS = -pg -O3 -funroll-all-loops -ftree-vectorize -fmath-errno -mavx -fopenmp
-#-fno-math-errno #-fno-inline # -fno-fast-math -ftree-vectorizer-verbose=6
+CFLAGS = -pg -Ofast -ftree-vectorize -fprefetch-loop-arrays -mavx -msse4.1 -funroll-all-loops -march=ivybridge -flto
 #CFLAGS += -flto -fgraphite-identity -floop-nest-optimize -mtune=native
 .DEFAULT_GOAL = all
 
