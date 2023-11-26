@@ -62,8 +62,6 @@ Position position;
 Velocity velocity;
 //  Acceleration data structure
 Acceleration acceleration;
-//  Force data structure
-Force force;
 
 // atom type
 char atype[10];
@@ -76,7 +74,7 @@ void initialize();
 double VelocityVerlet(double dt, int iter, FILE *fp, double * PE);  
 //  Compute Force using F = -dV/dr
 //  solve F = ma for use in Velocity Verlet
-double computeAccelerations();
+double computeAccelerationsAndPotential();
 //  Numerical Recipes function for generation gaussian distribution
 double gaussdist();
 //  Initialize velocities according to user-supplied initial Temperature (Tinit)
@@ -276,7 +274,7 @@ int main()
     //  Based on their positions, calculate the ininial intermolecular forces
     //  The accellerations of each particle will be defined from the forces and their
     //  mass, and this will allow us to update their positions via Newton's law
-    computeAccelerations();
+    computeAccelerationsAndPotential();
     
     
     // Print number of particles to the trajectory file
@@ -457,106 +455,37 @@ double Kinetic() { //Write Function here!
     
 }
 
-
-// Function to calculate the potential energy of the system
-double Potential() {
+inline double calculateLocalPotential(double inverseSquaredDistance) {
     /*
-    The potential energy between two particles i and j is symmetric, meaning U(i,j) = U(j,i).
-    So, we can eliminate almost half of the calculations by only computing the potential energy for unique pairs of particles, without repeating.
+    Given the inverse of the square of the distance between two particles, returns the potential between them
     */
-    double Pot = 0.;
 
-    for (int i=0; i < N-1; i++) {
-        for(int j = i+1; j < N; j++) {
+    /*
+    Instead of the following calculation:    quot = sigma / sqrt(distance_sqrd)
+    We calculate:    quot^2 = (sigma / sqrt(distance_sqrd))^2
+                            = sigma^2 / distance_sqrd
+                            = sigma * sigma / distance_sqrd
+    This way, we avoid calculating the square root of distance_sqrd, which is an expensive calculation
+    Due to the fact that after calculating quot we need to calculate quot^6 and quot^12, it is actually useful to calculate quot^2
+    directly and just calculating the other two powers from quot^2, which is what we do below:
+    */
+    double quot2 = sigma2 * inverseSquaredDistance;
+    /*
+    We calculate these values with large exponents manually, to be as quick as possible
+    */
+    double quot6 = quot2*quot2*quot2;  //quot6 = (quot^2)^3
+    double quot12 = quot6*quot6; // quot12 = quot6^
 
-            // we unroll the k loop: computes the difference for each of the coordinates between the two particles
-            // we square the differences of each coordinate between the two particles and we sum them up.
-            double rij_0 = position.x[i] - position.x[j]; // x distance between the two particles
-            double rij_1 = position.y[i] - position.y[j]; // y distance between the two particles
-            double rij_2 = position.z[i] - position.z[j]; // z distance between the two particles
-            double sq0 = rij_0*rij_0;
-            double sq1 = rij_1*rij_1;
-            double sq2 = rij_2*rij_2;
-            // This is the square of the distance between the two particles
-            double distance_sqrd = sq0 + sq1 + sq2;
-
-            /*
-            Instead the following calculation:    quot = sigma / sqrt(distance_sqrd)
-
-            We calculate:    quot^2 = (sigma / sqrt(distance_sqrd))^2
-                                    = sigma^2 / distance_sqrd
-                                    = sigma * sigma / distance_sqrd
-
-            This way, we avoid calculating the square root of distance_sqrd, which is an expensive calculation
-
-            Due to the fact that after calculating quot we need to calculate quot^6 and quot^12, it is actually useful to calculate quot^2
-            directly and just calculating the other two powers from quot^2, which is what we do below:
-            */
-            
-            double quot2 = sigma2 / distance_sqrd;
-            /*
-            Here we calculate quot^6 and quot^12 by calling the function 'pow', but with integer exponents because the function runs faster.
-            Calculating these values this way is way faster because 
-            */
-            double quot6 = quot2*quot2*quot2;  //quot6 = (quot^2)^3
-            double quot12 = quot6*quot6; // quot12 = quot6^2
-
-            // We multiply by 8 instead of 4 to account for the symmetry property when calculating the Potential
-            // Every pair of particle is only processed once instead of twice this way
-            Pot += epsilon8 * (quot12 - quot6);  
-        }
-    }
-
-    return Pot;
+    // We multiply by 8 instead of 4 to account for the symmetry property when calculating the Potential
+    // Every pair of particle should only be processed once instead of twice this way, to save computation time!
+    return epsilon8 * (quot12 - quot6); 
 }
-
-//inline double calculatePotential(int i, int j) {
-//    double diff1 = position.x[i] - position.x[j];
-//    double diff2 = position.y[i] - position.y[j];
-//    double diff3 = position.z[i] - position.z[j];
-//    double r2 = diff1 * diff1 + diff2 * diff2 + diff3 * diff3;
-//    //double rnorm = sqrt(r2);
-//    //double quot = sigma / rnorm;
-//
-//    //like this we avoid calculating the sqrt of r2, which is a costly operation
-//    double quot = sigma * sigma / r2;
-//    double quot6 = std::pow(quot, 6);
-//    double quot12 = quot6 * quot6;
-//    return epsilon8 * (quot12 - quot6);
-//}
-//
-//double Potential() {
-//    double Pot = 0.;
-//
-//    for (int i = 0; i < N-1; i++) {
-//        // Process pairs of elements in the inner loop
-//        int j = i+1;
-//        // Process groups of 8 elements in the inner loop
-//        for(; j+7 < N; j+=8) {
-//            Pot += calculatePotential(i, j);
-//            Pot += calculatePotential(i, j+1);
-//            Pot += calculatePotential(i, j+2);
-//            Pot += calculatePotential(i, j+3);
-//            Pot += calculatePotential(i, j+4);
-//            Pot += calculatePotential(i, j+5);
-//            Pot += calculatePotential(i, j+6);
-//            Pot += calculatePotential(i, j+7);
-//        }
-//
-//        // Process any remaining elements
-//        for(; j < N; j++) {
-//            Pot += calculatePotential(i, j);
-//        }
-//    }
-//
-//    return Pot;
-//}
 
 //   Uses the derivative of the Lennard-Jones potential to calculate
 //   the forces on each atom.  Then uses a = F/m to calculate the
 //   accelleration of each atom. 
 // Returns the Potential
-double computeAccelerations() {
+double computeAccelerationsAndPotential() {
 
     for (int i = 0; i < N; i++) {  // set all accelerations to zero
         // we unroll the k loop
@@ -567,13 +496,11 @@ double computeAccelerations() {
 
     double Pot = 0.;
     // Declare the variables outside the parallel region
-    //#pragma omp parallel for schedule(dynamic) reduction(+:Pot)
     for (int i = 0; i < N-1; i++) {   // loop over all distinct pairs i,j
 
         // we define temporary variables so that we don't access the memory so often in the j loop
         double ai0=0, ai1=0, ai2=0;
 
-        #pragma omp parallel for schedule(static) reduction(+:ai0,ai1,ai2,Pot)
         for (int j = i+1; j < N; j++) {
             
             // we unroll the k loop: computes the difference for each of the coordinates between the two particles
@@ -594,19 +521,8 @@ double computeAccelerations() {
             // d4 = d2^2 = d1^4
             double d4 = d2*d2;
 
-            /* POTENTIAL CODE */
-            //double quot2 = sigma2 / distance_sqrd;
-            double quot2 = sigma2 * d1;
-            /*
-            Here we calculate quot^6 and quot^12 by calling the function 'pow', but with integer exponents because the function runs faster.
-            Calculating these values this way is way faster because 
-            */
-            double quot6 = quot2*quot2*quot2;  //quot6 = (quot^2)^3
-            double quot12 = quot6*quot6; // quot12 = quot6^2
-
-            // We multiply by 8 instead of 4 to account for the symmetry property when calculating the Potential
-            // Every pair of particle is only processed once instead of twice this way
-            Pot += epsilon8 * (quot12 - quot6);  
+            // We pass as argument the inverse of the distance to avoid calculating the same division
+            Pot += calculateLocalPotential(d1);
             
             //  From derivative of Lennard-Jones with sigma and epsilon set equal to 1 in natural units!
             //double f = 24 * (2 * pow(distance_sqrd, -7) - pow(distance_sqrd, -4));
@@ -645,7 +561,7 @@ double VelocityVerlet(double dt, int iter, FILE *fp, double * PE) {
     
     //  Compute accelerations from forces at current position
     // this call was removed (commented) for predagogical reasons
-    //computeAccelerations();
+    //computeAccelerationsAndPotential();
     //  Update positions and velocity with current velocity and acceleration
     //printf("  Updated Positions!\n");
     for (i=0; i<N; i++) {
@@ -662,7 +578,7 @@ double VelocityVerlet(double dt, int iter, FILE *fp, double * PE) {
         //printf("  %i  %6.4e   %6.4e   %6.4e\n",i,r[i][0],r[i][1],r[i][2]);
     }
     //  Update accellerations from updated positions, and calculate potential
-    *PE = computeAccelerations();
+    *PE = computeAccelerationsAndPotential();
     //  Update velocity with updated acceleration
     for (i=0; i<N; i++) {
         velocity.x[i] += 0.5*acceleration.x[i]*dt;
