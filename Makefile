@@ -23,4 +23,4 @@ runseq:
 	./MDseq.exe < inputdata.txt
 
 runpar:
-	./MDpar.exe < inputdata.txt
+	OMP_NUM_THREADS=40 ./MDpar.exe < inputdata.txt
