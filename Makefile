@@ -4,7 +4,7 @@ CFLAGS = -pg -Ofast -ftree-vectorize -fprefetch-loop-arrays -mavx -msse4.1 -funr
 #CFLAGS += -flto -fgraphite-identity -floop-nest-optimize -mtune=native
 .DEFAULT_GOAL = all
 
-all: MDseq.exe MDpar.exe
+all: MDseq.exe MDpar.exe MDmpi.exe
 
 #MD.exe: $(SRC)/MD.cpp
 #	$(CC) $(CFLAGS) $(SRC)MD.cpp -lm -o MD.exe
@@ -15,8 +15,12 @@ MDseq.exe: $(SRC)/MDseq.cpp
 MDpar.exe: $(SRC)/MDpar.cpp
 	module load gcc/11.2.0; $(CC) $(CFLAGS) $(SRC)MDpar.cpp -lm -fopenmp -o MDpar.exe
 
+MDmpi.exe: $(SRC)/MDmpi.cpp
+	module load gcc/11.2.0; mpiCC $(CFLAGS) $(SRC)MDmpi.cpp -lm -o MDmpi.exe
+
 clean:
 	rm ./MDpar.exe
+	rm ./MDmpi.exe
 	rm ./MDseq.exe
 
 runseq:
@@ -24,3 +28,6 @@ runseq:
 
 runpar:
 	OMP_NUM_THREADS=40 ./MDpar.exe < inputdata.txt
+
+runmpi:
+	./MDmpi.exe < inputdata.txt
